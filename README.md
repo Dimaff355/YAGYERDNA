@@ -27,7 +27,9 @@
 
 ## iac/
 
-Каркас под Infrastructure-as-Code (Ansible, OpenTofu). Код появится на этапе внедрения (см. `docs/11-rollout.md`), структура уже определена.
+Рабочий каркас Infrastructure-as-Code (код есть, наполняется на этапе внедрения — см. `docs/11-rollout.md`):
+- `iac/ansible/` — ansible.cfg, инвентарь prod, group_vars, playbooks (site, proxmox-cluster с Ceph), роли: common, proxmox_node, zabbix_server, linux_desktop (ansible-pull для рабочих станций)
+- `iac/terraform/` — OpenTofu: модуль `proxmox_vm` (cloud-init ВМ на Ceph) + `envs/prod` с декларативным описанием 8 инфра-ВМ (Zabbix, GLPI, Nextcloud, Keycloak, GitLab, AWX, 2×MikoPBX)
 
 ## Принципы проекта
 
