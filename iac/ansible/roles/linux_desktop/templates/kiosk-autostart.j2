@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Kiosk
+Comment=Режим киоска колл-центра: CRM + софтфон во весь экран
+Exec=/usr/bin/yandex-browser --kiosk --no-first-run {{ kiosk_url | default('https://crm.corp.crmfactory.local') }}
+X-GNOME-Autostart-enabled=true

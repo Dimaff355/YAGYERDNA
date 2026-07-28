@@ -1,0 +1,23 @@
+# /etc/network/interfaces — генерируется Ansible (роль proxmox_node)
+auto lo
+iface lo inet loopback
+
+iface {{ pve_mgmt_iface | default('eno1') }} inet manual
+
+# vmbr0: прод/управление (10.10.20.0/24)
+auto vmbr0
+iface vmbr0 inet static
+    address {{ ansible_host }}/24
+    gateway {{ pve_gateway | default('10.10.20.1') }}
+    bridge-ports {{ pve_mgmt_iface | default('eno1') }}
+    bridge-stp off
+    bridge-fd 0
+
+# vmbr1: Ceph 25G-фабрика (без шлюза, MTU 9000)
+auto vmbr1
+iface vmbr1 inet static
+    address {{ ceph_node_ip }}/24
+    mtu 9000
+    bridge-ports {{ pve_ceph_iface | default('eno2') }}
+    bridge-stp off
+    bridge-fd 0

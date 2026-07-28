@@ -16,3 +16,6 @@ glpi_agent_server: http://10.10.30.12
 # Telegram-алерты (токен — из OpenBao, НЕ коммитить)
 telegram_bot_token: "{{ lookup('env', 'TG_BOT_TOKEN') | default('') }}"
 telegram_chat_id: "{{ lookup('env', 'TG_CHAT_ID') | default('') }}"
+
+# Пароль БД Zabbix — из env/OpenBao
+zabbix_db_password: "{{ lookup('env', 'ZABBIX_DB_PASSWORD') | default('changeme') }}"

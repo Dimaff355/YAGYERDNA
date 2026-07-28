@@ -1,5 +1,5 @@
 ---
-# Полная сборка инфраструктуры (docs/11-rollout.md, этапы 3–4)
+# Полная сборка инфраструктуры (docs/11-rollout.md, этапы 3–4; порядок — iac/docs/RUNBOOK.md)
 - name: Базовая настройка всех хостов
   hosts: all
   roles:
@@ -11,14 +11,21 @@
     - proxmox_node
     # - ceph   # раскомментировать после пролива нод и проверки дисков
 
-- name: Инфраструктурные сервисы
-  hosts: infra_vms
+- name: Мониторинг
+  hosts: zabbix-01
   roles:
     - zabbix_server
-    # - glpi
-    # - nextcloud
-    # - keycloak
-    # - pbs на backup_servers (отдельный playbook: backup.yml)
+
+# По мере готовности ролей (этап 4 rollout):
+# - name: ITAM/Helpdesk
+#   hosts: glpi-01
+#   roles: [glpi]
+# - name: Файлы
+#   hosts: nextcloud-01
+#   roles: [nextcloud]
+# - name: SSO
+#   hosts: keycloak-01
+#   roles: [keycloak]
 
 - name: Рабочие места Linux (через ansible-pull, справочно)
   hosts: linux_desktops

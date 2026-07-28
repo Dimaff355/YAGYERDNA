@@ -1,0 +1,10 @@
+---
+# Роль рабочей станции: office (по умолчанию) / callcenter / developer
+workstation_role: office
+
+# URL пакетов из ЛОКАЛЬНОГО файлового репозитория (docs/05: дистрибутивы в локальном репо)
+r7office_deb_url: "http://repo.corp.crmfactory.local/packages/r7-office.deb"
+yabrowser_deb_url: "http://repo.corp.crmfactory.local/packages/yandex-browser.deb"
+
+# URL CRM для киоска колл-центра
+kiosk_url: "https://crm.corp.crmfactory.local"
