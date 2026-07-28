@@ -9,23 +9,32 @@
   hosts: proxmox_nodes
   roles:
     - proxmox_node
-    # - ceph   # раскомментировать после пролива нод и проверки дисков
+    - ceph   # пулы + проверка здоровья; запускать после proxmox-cluster.yml (OSD созданы)
 
 - name: Мониторинг
   hosts: zabbix-01
   roles:
     - zabbix_server
 
-# По мере готовности ролей (этап 4 rollout):
-# - name: ITAM/Helpdesk
-#   hosts: glpi-01
-#   roles: [glpi]
-# - name: Файлы
-#   hosts: nextcloud-01
-#   roles: [nextcloud]
-# - name: SSO
-#   hosts: keycloak-01
-#   roles: [keycloak]
+- name: SSO (поднимается первым из сервисов — docs/16)
+  hosts: keycloak-01
+  roles:
+    - keycloak
+
+- name: ITAM/Helpdesk
+  hosts: glpi-01
+  roles:
+    - glpi
+
+- name: Файлы + OnlyOffice
+  hosts: nextcloud-01
+  roles:
+    - nextcloud
+
+- name: Телефония (MikoPBX, актив/резерв)
+  hosts: mikopbx
+  roles:
+    - mikopbx
 
 - name: Рабочие места Linux (через ansible-pull, справочно)
   hosts: linux_desktops

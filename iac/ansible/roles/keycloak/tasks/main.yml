@@ -1,0 +1,75 @@
+---
+# Keycloak (docker, официальный образ), realm crmfactory, OIDC-клиенты (docs/09).
+# Запуск: ansible-playbook playbooks/site.yml --limit keycloak-01
+# Поднимается ПЕРВЫМ из сервисов (docs/16) — SSO нужен остальным.
+
+- name: Docker и compose-plugin
+  apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+
+- name: Docker запущен
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Каталог Keycloak
+  file:
+    path: '{{ item }}'
+    state: directory
+    mode: '0750'
+  loop:
+    - /opt/keycloak
+    - /opt/keycloak/import
+
+- name: 'Realm crmfactory для импорта (клиенты: grafana, nextcloud, glpi, gitlab)'
+  template:
+    src: crmfactory-realm.json.j2
+    dest: /opt/keycloak/import/crmfactory-realm.json
+    mode: '0640'
+  notify: recreate keycloak stack
+
+- name: docker-compose.yml Keycloak
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/keycloak/docker-compose.yml
+    mode: '0640'
+  notify: recreate keycloak stack
+
+- name: Env-файл (admin/БД пароли — из OpenBao/env)
+  template:
+    src: env.j2
+    dest: /opt/keycloak/.env
+    mode: '0600'
+  notify: recreate keycloak stack
+
+- name: Keycloak-стек поднят
+  command: docker compose -f /opt/keycloak/docker-compose.yml up -d
+  register: kc_up
+  changed_when: "'Started' in kc_up.stderr or 'Created' in kc_up.stderr"
+
+- name: Keycloak отвечает (health)
+  uri:
+    url: 'http://localhost:8080/realms/{{ keycloak_realm }}/.well-known/openid-configuration'
+    status_code: 200
+  register: kc_health
+  retries: 12
+  delay: 10
+  until: kc_health.status == 200
+
+# --- Плейсхолдер LDAP federation к ALD Pro ---
+# Realm crmfactory → User federation → Add LDAP provider:
+#   vendor: Other (FreeIPA-совместимый), connection: ldaps://ald.corp.crmfactory.local:636,
+#   users DN: cn=users,cn=accounts,dc=corp,dc=crmfactory,dc=local,
+#   bind: uid=keycloak-bind,cn=sysaccounts,... (пароль из OpenBao),
+#   edit mode: READ_ONLY, sync registrations: off, периодический full sync: 86400.
+# Не автоматизируем в JSON realm: ALD Pro ещё не развёрнут (docs/16),
+# атрибуты FreeIPA подставляются после тестового bind. Чек-лист — docs/16.
+
+  handlers:
+    - name: recreate keycloak stack
+      command: docker compose -f /opt/keycloak/docker-compose.yml up -d --force-recreate

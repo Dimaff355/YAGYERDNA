@@ -1,0 +1,133 @@
+---
+# Proxmox Backup Server на backup-сервере (docs/04: 12 × 16–20 ТБ NL-SAS, ZFS RAIDZ2).
+# Запуск: ansible-playbook playbooks/backup.yml
+# Идемпотентность: creates/статусы там, где CLI PBS не идемпотентен сам по себе.
+
+- name: Репозиторий PBS (no-subscription; enterprise при подписке)
+  apt_repository:
+    repo: "deb http://download.proxmox.com/debian/pbs {{ ansible_distribution_release }} pbs-no-subscription"
+    state: present
+    filename: pbs-no-subscription
+
+- name: Отключить enterprise-репозиторий PBS без подписки
+  apt_repository:
+    repo: "deb https://enterprise.proxmox.com/debian/pbs {{ ansible_distribution_release }} pbs-enterprise"
+    state: absent
+    filename: pbs-enterprise
+
+- name: Пакеты PBS + ZFS
+  apt:
+    name:
+      - proxmox-backup-server
+      - zfsutils-linux
+    state: present
+    update_cache: true
+
+# --- ZFS-пул backups: RAIDZ2 на 12 дисков (docs/04: ~120–160 ТБ полезных) ---
+# ВНИМАНИЕ: zpool create деструктивен для перечисленных дисков.
+# Список дисков — в group_vars/backup_servers.yml (pbs_zfs_devices), по /dev/disk/by-id!
+
+- name: ZFS-пул backups существует (RAIDZ2, ashift=12, compression=lz4)
+  command: >
+    zpool create -o ashift=12
+    -O compression=lz4
+    -O atime=off
+    -O xattr=sa
+    -O recordsize=1M
+    -O mountpoint=/backups
+    backups
+    raidz2 {{ pbs_zfs_devices | join(' ') }}
+  args:
+    creates: /backups
+  when: pbs_zfs_devices is defined and pbs_zfs_devices | length == 12
+
+- name: Статус пула
+  command: zpool status backups
+  register: zpool_status
+  changed_when: false
+  failed_when: "'DEGRADED' in zpool_status.stdout or 'FAULTED' in zpool_status.stdout"
+
+# --- Datastore ---
+
+- name: Datastore main создан
+  command: proxmox-backup-manager datastore create main /backups/main
+  args:
+    creates: /backups/main/.chunks
+
+- name: Prune-политика (keep daily 7 / weekly 4 / monthly 12 — docs/09)
+  command: >
+    proxmox-backup-manager datastore update main
+    --keep-daily 7 --keep-weekly 4 --keep-monthly 12
+  register: prune_update
+  changed_when: prune_update.rc == 0
+
+- name: GC-расписание (еженедельно, воскресенье 03:00)
+  command: proxmox-backup-manager datastore update main --gc-schedule 'sun 03:00'
+  register: gc_update
+  changed_when: gc_update.rc == 0
+
+- name: Prune-job (ежедневно 04:00)
+  command: proxmox-backup-manager prune-job create prune-main --store main --schedule '04:00'
+  args:
+    creates: /etc/proxmox-backup/prune.cfg
+  ignore_errors: true  # PBS >= 3 создаёт prune через datastore update; job — если версия поддерживает
+
+# --- Вторая копия в S3 (Yandex Cloud, 3-2-1 из docs/04 и docs/09) ---
+# Переменные в group_vars/backup_servers.yml (секреты — из OpenBao):
+#   pbs_s3_endpoint: https://storage.yandexcloud.net
+#   pbs_s3_bucket: crm-backups-offsite
+#   pbs_s3_access_key / pbs_s3_secret_key: из OpenBao, НЕ коммитить
+# PBS нативного S3-sync нет (до PBS 3.x включительно — только tape и remote PBS).
+# Поэтому вторая копия — через rclone синк /backups/main в S3 Object Lock бакет.
+
+- name: rclone для S3-синка второй копии
+  apt:
+    name: rclone
+    state: present
+  when: pbs_s3_bucket is defined
+
+- name: Конфиг rclone (Yandex Cloud S3)
+  template:
+    src: rclone.conf.j2
+    dest: /root/.config/rclone/rclone.conf
+    mode: '0600'
+  when: pbs_s3_bucket is defined
+
+- name: Systemd-юнит S3-sync второй копии (еженочно 02:00)
+  template:
+    src: s3-sync.service.j2
+    dest: /etc/systemd/system/pbs-s3-sync.service
+  notify: daemon-reload
+  when: pbs_s3_bucket is defined
+
+- name: Таймер S3-sync
+  template:
+    src: s3-sync.timer.j2
+    dest: /etc/systemd/system/pbs-s3-sync.timer
+  notify: daemon-reload
+  when: pbs_s3_bucket is defined
+
+- name: Таймер S3-sync включён
+  systemd:
+    name: pbs-s3-sync.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: pbs_s3_bucket is defined
+
+# --- Tape-job заготовка (LTO-9 автолоадер — docs/04 «Долгосрочный архив») ---
+# Когда купят LTO-9 (HPE StoreEver 1/8 G2 или одиночный привод):
+# 1. Установить: apt install pbs-tape (пакет proxmox-backup-server включает tape-поддержку)
+# 2. Устройство changer определится как /dev/tape/by-id/scsi-*-changer, привод — /dev/tape/by-id/scsi-*-st
+# 3. Команды (ручные, один раз — зависят от конкретного железа):
+#      proxmox-tape changer create mtx0 --path /dev/tape/by-id/scsi-XXXX-changer
+#      proxmox-tape drive create lto9 --path /dev/tape/by-id/scsi-YYYY-nst --changer mtx0
+#      proxmox-tape pool create archive --allocation monthly --retention 10y
+#      proxmox-tape tape-job create monthly-archive --store main --pool archive --schedule 'sat 01:00'
+# 4. Ежемесячный дамп критичного (1С, ЗУП, фин. документы) → лента → картриджи в сейф/вне офиса (WORM для 152-ФЗ/НК РФ).
+# Почему не автоматизируем сейчас: железа нет, пути устройств неизвестны, WORM-режим — осознанное решение бухгалтерии.
+
+  handlers:
+    - name: daemon-reload
+      systemd:
+        daemon_reload: true

@@ -1,0 +1,67 @@
+---
+# Nextcloud в docker-compose: nextcloud:stable + postgres + redis + OnlyOffice (docs/09).
+# Запуск: ansible-playbook playbooks/site.yml --limit nextcloud-01
+# LDAP к ALD Pro и OIDC к Keycloak — плейсхолдеры внизу (поднимаются раньше Nextcloud по docs/16).
+
+- name: Docker и compose-plugin
+  apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+
+- name: Docker запущен
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Каталоги Nextcloud
+  file:
+    path: '{{ item }}'
+    state: directory
+    mode: '0750'
+  loop:
+    - /opt/nextcloud
+    - /srv/nextcloud/data
+    - /srv/nextcloud/onlyoffice
+
+- name: docker-compose.yml Nextcloud
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/nextcloud/docker-compose.yml
+    mode: '0640'
+  notify: recreate nextcloud stack
+
+- name: Env-файл (пароли БД — из OpenBao/env, НЕ коммитить)
+  template:
+    src: env.j2
+    dest: /opt/nextcloud/.env
+    mode: '0600'
+  notify: recreate nextcloud stack
+
+- name: Nextcloud-стек поднят
+  command: docker compose -f /opt/nextcloud/docker-compose.yml up -d
+  register: nc_up
+  changed_when: "'Started' in nc_up.stderr or 'Created' in nc_up.stderr or 'Running' not in nc_up.stderr"
+
+- name: trusted_domains выставлены
+  command: >
+    docker compose -f /opt/nextcloud/docker-compose.yml exec -T -u www-data app
+    php occ config:system:set trusted_domains {{ item }} --value={{ nextcloud_trusted_domains[item] }}
+  loop: '{{ nextcloud_trusted_domains | dict2items | map(attribute="key") | list }}'
+  ignore_errors: true  # app-контейнер может быть ещё не готов на первом прогоне — догнать руками или повтором
+
+# --- Плейсхолдеры ---
+# LDAP (ALD Pro, когда домен поднят):
+#   Настройки → LDAP: сервер ald.corp.crmfactory.local:636, baseDN dc=corp,dc=crmfactory,dc=local.
+# OIDC (Keycloak realm crmfactory, клиент nextcloud — создаёт роль keycloak):
+#   приложение Nextcloud "OpenID Connect Login" (из Apps), issuer
+#   https://keycloak.{{ domain }}/realms/crmfactory, client secret — из OpenBao.
+# Почему не автоматизируем веб-часть: occ-команды для OIDC-плагина нестабильны между версиями —
+# настраивается один раз в веб-морде, чек-лист в docs/16.
+
+  handlers:
+    - name: recreate nextcloud stack
+      command: docker compose -f /opt/nextcloud/docker-compose.yml up -d --force-recreate

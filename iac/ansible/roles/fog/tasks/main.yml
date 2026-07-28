@@ -1,0 +1,97 @@
+---
+# FOG Server — развёртывание образов рабочих мест по PXE (docs/05-workplaces.md)
+# Целевая ВМ: fog-01, Debian 12, 2 vCPU / 4 ГБ / 100 ГБ (образы — /images, при необходимости +500 ГБ)
+# Запуск: ansible-playbook -i inventories/prod playbooks/site.yml --tags fog --limit fog-01
+
+- name: Пакеты-зависимости FOG
+  apt:
+    name:
+      - git
+      - curl
+      - tar
+      - gzip
+      - nfs-kernel-server   # FOG хранит образы на NFS (/images экспортируется самим FOG)
+      - isc-dhcp-server     # ставим, но НЕ включаем — DHCP живёт на UserGate/ядре (см. комментарий ниже)
+    state: present
+    update_cache: true
+
+# ВАЖНО: DHCP для PXE настраивается НЕ на FOG, а на UserGate/ядре сети (docs/03-network.md):
+#   option next-server 10.10.30.20;        # IP fog-01
+#   option filename   "undionly.kpxe";     # BIOS
+#   option filename   "ipxe.efi";          # UEFI (policy-based по option 93 client-arch)
+# FOG ставим БЕЗ его собственного DHCP (dodhcp='N'), чтобы не было конфликта серверов.
+
+- name: Клонирование FOG Project (стабильная ветка)
+  git:
+    repo: https://github.com/FOGProject/fogproject.git
+    dest: /opt/fogproject
+    version: "{{ fog_version | default('stable') }}"
+    depth: 1
+
+- name: Файл ответов установщика FOG (.fogsettings)
+  copy:
+    dest: /opt/fogproject/bin/.fogsettings
+    mode: "0600"
+    content: |
+      ipaddress='{{ fog_ip | default("10.10.30.20") }}'
+      interface='{{ fog_iface | default("ens18") }}'
+      submask='255.255.255.0'
+      routeraddress='10.10.30.1'
+      plainrouter='10.10.30.1'
+      dnsaddress='10.10.30.11'
+      username='fog'
+      password='{{ fog_web_password }}'
+      osid='3'
+      installtype='N'
+      snmysqluser='fog'
+      snmysqlpass='{{ fog_db_password }}'
+      snmysqlhost='localhost'
+      installlang=''
+      donate='0'
+      storageLocation='/images'
+      fogupdateloaded='1'
+      dodhcp='N'
+      bldhcp='0'
+  # password/snmysqlpass — из OpenBao/env, НЕ коммитить (см. group_vars/all.yml)
+
+- name: Установка FOG (installfog.sh в неинтерактивном режиме)
+  command: >
+    bash /opt/fogproject/bin/installfog.sh -y
+  args:
+    chdir: /opt/fogproject/bin
+    creates: /var/www/fog/management/index.php
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: "Каталоги под образы (заготовка по docs/05: 2–3 аппаратные модели)"
+  file:
+    path: "/images/{{ item }}"
+    state: directory
+    owner: fog
+    group: fogproject
+    mode: "0777"
+  loop:
+    - redos8-thinkcentre-m75q   # эталон РЕД ОС 8: офис + колл-центр
+    - redos8-minisforum-um790   # разработчики
+    - win11-thinkcentre-m75q    # Windows 11 (захват из-под MDT, резервная заливка)
+
+- name: NFS-экспорт /images доступен из VLAN рабочих станций
+  lineinfile:
+    path: /etc/exports
+    regexp: '^/images '
+    line: '/images 10.10.0.0/16(ro,sync,no_subtree_check)'
+  notify: reexport nfs
+
+- name: Сервисы FOG включены и запущены
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - FOGMulticastManager
+    - FOGImageReplicator
+    - FOGSnapinReplicator
+
+  handlers:
+    - name: reexport nfs
+      command: exportfs -ra

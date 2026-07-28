@@ -1,0 +1,63 @@
+{
+  "realm": "{{ keycloak_realm }}",
+  "enabled": true,
+  "displayName": "CRM Factory",
+  "loginTheme": "keycloak",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 28800,
+  "bruteForceProtected": true,
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+  "clients": [
+    {
+      "clientId": "grafana",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "{{ keycloak_client_secrets.grafana }}",
+      "redirectUris": ["https://grafana.{{ domain }}/login/generic_oauth/*"],
+      "webOrigins": ["https://grafana.{{ domain }}"],
+      "standardFlowEnabled": true
+    },
+    {
+      "clientId": "nextcloud",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "{{ keycloak_client_secrets.nextcloud }}",
+      "redirectUris": ["https://files.{{ domain }}/apps/user_oidc/code"],
+      "webOrigins": ["https://files.{{ domain }}"],
+      "standardFlowEnabled": true
+    },
+    {
+      "clientId": "glpi",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "{{ keycloak_client_secrets.glpi }}",
+      "redirectUris": ["https://glpi.{{ domain }}/front/oidc.callback.php"],
+      "webOrigins": ["https://glpi.{{ domain }}"],
+      "standardFlowEnabled": true
+    },
+    {
+      "clientId": "gitlab",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "{{ keycloak_client_secrets.gitlab }}",
+      "redirectUris": ["https://git.{{ domain }}/users/auth/openid_connect/callback"],
+      "webOrigins": ["https://git.{{ domain }}"],
+      "standardFlowEnabled": true
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "groups",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true" },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": { "full.group.path": "false", "claim.name": "groups", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true" }
+        }
+      ]
+    }
+  ]
+}

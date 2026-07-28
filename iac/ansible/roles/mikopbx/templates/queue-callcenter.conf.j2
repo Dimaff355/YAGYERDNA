@@ -1,0 +1,23 @@
+; Очередь колл-центра + запись разговоров (база, донастройка в веб-морде MikoPBX)
+; MikoPBX генерирует основной конфиг из БД — этот файл подключается как custom-override
+; (System → Customization → добавить в конец queues.conf/extensions).
+
+[queue-callcenter]
+strategy=rrmemory          ; равномерное распределение с памятью последнего агента
+timeout=20                 ; сколько звонить агенту
+retry=5
+wrapuptime=10              ; пауза после звонка (пост-обработка)
+maxlen=30                  ; максимум ожидающих в очереди
+joinempty=no
+leavewhenempty=yes
+ringinuse=no
+announce-frequency=60      ; объявление позиции в очереди
+periodic-announce-frequency=90
+musiconhold=default
+; Запись разговоров — включается глобально в MikoPBX (Call recording: All),
+; файлы: /storage/records/<год>/<месяц>/<день>/ (диск /dev/sdb1, монтируется ролью)
+monitor-type=MixMonitor
+monitor-format=wav
+
+; Операторы добавляются через веб-морду (Extensions → Queues), членство:
+; member => PJSIP/2xx для каждого оператора колл-центра

@@ -1,0 +1,18 @@
+[glpi]
+user = www-data
+group = www-data
+listen = /run/php/php-fpm-glpi.sock
+listen.owner = www-data
+listen.group = www-data
+pm = dynamic
+pm.max_children = 20
+pm.start_servers = 4
+pm.min_spare_servers = 2
+pm.max_spare_servers = 8
+
+php_admin_value[memory_limit] = 512M
+php_admin_value[max_execution_time] = 300
+php_admin_value[session.cookie_httponly] = On
+php_admin_value[opcache.enable] = 1
+php_admin_value[opcache.memory_consumption] = 128
+php_admin_value[apc.shm_size] = 64M

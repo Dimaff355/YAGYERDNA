@@ -1,0 +1,9 @@
+# rclone remote для второй копии бэкапов в Yandex Cloud S3 (Object Lock бакет)
+[ycs3]
+type = s3
+provider = Yandex
+endpoint = {{ pbs_s3_endpoint | default('https://storage.yandexcloud.net') }}
+access_key_id = {{ pbs_s3_access_key }}
+secret_access_key = {{ pbs_s3_secret_key }}
+region = ru-central1
+acl = private

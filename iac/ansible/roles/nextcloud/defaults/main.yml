@@ -1,0 +1,10 @@
+---
+nextcloud_fqdn: "files.{{ domain }}"
+nextcloud_db_password: "{{ lookup('env', 'NC_DB_PASSWORD') | default('changeme') }}"
+nextcloud_admin_password: "{{ lookup('env', 'NC_ADMIN_PASSWORD') | default('changeme') }}"
+nextcloud_redis_password: "{{ lookup('env', 'NC_REDIS_PASSWORD') | default('changeme') }}"
+onlyoffice_jwt_secret: "{{ lookup('env', 'ONLYOFFICE_JWT') | default('changeme') }}"
+nextcloud_trusted_domains:
+  0: "files.{{ domain }}"
+  1: "{{ ansible_host }}"
+  2: "nextcloud-01"

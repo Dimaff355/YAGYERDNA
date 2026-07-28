@@ -1,0 +1,107 @@
+---
+# MikoPBX — АТС колл-центра (docs/09: телефония; 2 ноды mikopbx-01/02 — актив/резерв).
+# MikoPBX ставится НЕ из пакетов: официальный путь — готовый образ ВМ или
+# установочный скрипт на чистую Debian/Ubuntu. Роль делает:
+#   1) подготовку ВМ (доп. диск под записи разговоров, пакеты);
+#   2) установку официальным скриптом MikoPBX (Generic/Debian-установщик);
+#   3) базовые конфиги (плейсхолдеры SIP-транков, очередь, запись);
+#   4) cron-бэкап конфигурации.
+# После роли — донастройка в веб-морде (реальные логины/пароли транков от провайдеров).
+# Почему транки плейсхолдерами: договоры с SIP-провайдерами заключаются на этапе rollout,
+# реквизитов нет на момент пролива (RUNBOOK, «что осознанно не автоматизировано»).
+
+- name: Пакеты подготовки ВМ MikoPBX
+  apt:
+    name:
+      - curl
+      - wget
+      - gnupg
+      - lsb-release
+      - sngrep
+      - tcpdump
+      - logrotate
+    state: present
+    update_cache: true
+
+- name: Точка монтирования диска записей разговоров
+  file:
+    path: /storage/records
+    state: directory
+    mode: '0755'
+
+- name: Диск записей примонтирован (второй диск ВМ из terraform, /dev/sdb)
+  mount:
+    path: /storage/records
+    src: /dev/sdb1
+    fstype: ext4
+    state: mounted
+  ignore_errors: true  # диск размечается cloud-init/terraform; если нет — смонтирует админ вручную
+
+- name: Установка MikoPBX официальным скриптом (idempotent через маркер)
+  shell: |
+    set -e
+    curl -fsSL https://www.mikopbx.ru/download/install-debian.sh -o /tmp/mikopbx-install.sh
+    bash /tmp/mikopbx-install.sh --storage=/storage/records
+  args:
+    creates: /etc/mikopbx/.installed
+  notify: restart mikopbx
+
+- name: Маркер установки
+  file:
+    path: /etc/mikopbx/.installed
+    state: touch
+    mode: '0644'
+  when: mikopbx_force_marker | default(false)
+
+- name: SIP-транк №1 (основной провайдер) — плейсхолдер
+  template:
+    src: sip-trunk-provider1.conf.j2
+    dest: /etc/mikopbx/conf.d/provider1.conf
+    mode: '0640'
+  notify: restart mikopbx
+
+- name: SIP-транк №2 (резервный провайдер, failover) — плейсхолдер
+  template:
+    src: sip-trunk-provider2.conf.j2
+    dest: /etc/mikopbx/conf.d/provider2.conf
+    mode: '0640'
+  notify: restart mikopbx
+
+- name: Очередь колл-центра + запись разговоров — базовый конфиг
+  template:
+    src: queue-callcenter.conf.j2
+    dest: /etc/mikopbx/conf.d/queue-callcenter.conf
+    mode: '0640'
+  notify: restart mikopbx
+
+- name: Cron-бэкап конфигурации MikoPBX (еженочно, ротация 14 дней)
+  cron:
+    name: mikopbx config backup
+    minute: '30'
+    hour: '2'
+    job: >
+      tar czf /var/backups/mikopbx-conf-$(date +\%F).tar.gz /etc/mikopbx
+      && find /var/backups -name 'mikopbx-conf-*.tar.gz' -mtime +14 -delete
+    cron_file: mikopbx-backup
+    user: root
+
+- name: Каталог бэкапов конфига
+  file:
+    path: /var/backups
+    state: directory
+    mode: '0750'
+
+# --- Что дальше руками (docs/16, шаг MikoPBX) ---
+# 1. Веб-морда https://<ip>/admin-cabinet: сменить пароль, указать реальные
+#    SIP-реквизиты двух провайдеров (транки плейсхолдерные — лягут в OFFLINE).
+# 2. Проверить failover: отключить транк №1 → исходящие уходят через №2.
+# 3. Синхронизация настроек 01↔02 (резервная нода): MikoPBX → System → Backup/Restore,
+#    либо регулярный rsync /etc/mikopbx (автоматизация фазы 2 — нужен механизм failover IP).
+# 4. Записи разговоров: /storage/records бэкапится PBS вместе с ВМ + синк критичного в S3.
+
+  handlers:
+    - name: restart mikopbx
+      service:
+        name: mikopbx
+        state: restarted
+      ignore_errors: true  # имя сервиса зависит от версии установщика; проверить на первом прогоне

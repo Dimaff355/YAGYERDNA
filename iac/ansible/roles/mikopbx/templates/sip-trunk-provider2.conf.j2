@@ -1,0 +1,19 @@
+; SIP-транк №2 — РЕЗЕРВНЫЙ провайдер (failover, плейсхолдер)
+; Используется, когда provider1 не отвечает (qualify → UNREACHABLE).
+; В маршрутах исходящих в веб-морде MikoPBX: правило failover provider1 → provider2.
+[provider2]
+type=friend
+host=sip2.provider-two.example.ru        ; ← endpoint провайдера №2
+username=PROVIDER2_LOGIN                 ; ← из договора (OpenBao)
+secret=PROVIDER2_PASSWORD                ; ← из OpenBao
+fromuser=PROVIDER2_LOGIN
+fromdomain=sip2.provider-two.example.ru
+context=from-trunk
+insecure=port,invite
+qualify=yes
+qualifyfreq=30
+nat=force_rport,comedia
+disallow=all
+allow=alaw
+allow=ulaw
+dtmfmode=rfc2833

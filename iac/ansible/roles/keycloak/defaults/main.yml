@@ -1,0 +1,12 @@
+---
+keycloak_realm: crmfactory
+keycloak_fqdn: "keycloak.{{ domain }}"
+keycloak_version: '26.0'
+keycloak_admin_password: "{{ lookup('env', 'KC_ADMIN_PASSWORD') | default('changeme') }}"
+keycloak_db_password: "{{ lookup('env', 'KC_DB_PASSWORD') | default('changeme') }}"
+# Client secrets — из OpenBao на проливе; дефолты только для первого теста, потом СМЕНИТЬ
+keycloak_client_secrets:
+  grafana: "{{ lookup('env', 'KC_SECRET_GRAFANA') | default('changeme') }}"
+  nextcloud: "{{ lookup('env', 'KC_SECRET_NEXTCLOUD') | default('changeme') }}"
+  glpi: "{{ lookup('env', 'KC_SECRET_GLPI') | default('changeme') }}"
+  gitlab: "{{ lookup('env', 'KC_SECRET_GITLAB') | default('changeme') }}"

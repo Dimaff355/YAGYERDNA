@@ -1,0 +1,10 @@
+[Unit]
+Description=PBS -> S3 (Yandex Cloud) offsite sync, вторая копия 3-2-1
+After=network-online.target zfs-mount.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rclone sync /backups/main ycs3:{{ pbs_s3_bucket }}/main --transfers=8 --checkers=16 --log-level INFO --log-file=/var/log/pbs-s3-sync.log
+Nice=19
+IOSchedulingClass=idle

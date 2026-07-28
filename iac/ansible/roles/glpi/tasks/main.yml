@@ -1,0 +1,125 @@
+---
+# GLPI 10 + MariaDB + nginx + php-fpm (docs/09: Helpdesk/ITAM).
+# Запуск: ansible-playbook playbooks/site.yml --limit glpi-01
+# После установки — мастер в веб-морде (docs/16), LDAP к ALD Pro — позже (плейсхолдер ниже).
+
+- name: Пакеты GLPI (MariaDB, nginx, php-fpm и расширения)
+  apt:
+    name:
+      - mariadb-server
+      - nginx
+      - php-fpm
+      - php-mysql
+      - php-gd
+      - php-intl
+      - php-ldap
+      - php-xml
+      - php-mbstring
+      - php-curl
+      - php-bz2
+      - php-zip
+      - php-opcache
+      - php-apcu
+      - php-xmlrpc
+      - php-exif
+      - php-bcmath
+      - php-sodium
+    state: present
+    update_cache: true
+
+- name: MariaDB запущен
+  service:
+    name: mariadb
+    state: started
+    enabled: true
+
+- name: БД GLPI
+  mysql_db:
+    name: glpi
+    encoding: utf8mb4
+    collation: utf8mb4_unicode_ci
+    state: present
+
+- name: Пользователь БД GLPI (пароль — из OpenBao/env)
+  mysql_user:
+    name: glpi
+    password: '{{ glpi_db_password }}'
+    priv: 'glpi.*:ALL'
+    host: localhost
+    state: present
+
+- name: Архив GLPI скачан
+  get_url:
+    url: 'https://github.com/glpi-project/glpi/releases/download/{{ glpi_version }}/glpi-{{ glpi_version }}.tgz'
+    dest: '/tmp/glpi-{{ glpi_version }}.tgz'
+    mode: '0644'
+
+- name: GLPI распакован в /var/www/glpi
+  unarchive:
+    src: '/tmp/glpi-{{ glpi_version }}.tgz'
+    dest: /var/www
+    remote_src: true
+    owner: www-data
+    group: www-data
+    creates: /var/www/glpi/index.php
+
+- name: Каталоги GLPI с правильными правами
+  file:
+    path: '/var/www/glpi/{{ item }}'
+    state: directory
+    owner: www-data
+    group: www-data
+    recurse: false
+  loop:
+    - files
+    - config
+    - marketplace
+
+- name: vhost nginx для GLPI
+  template:
+    src: glpi-nginx.conf.j2
+    dest: /etc/nginx/sites-available/glpi.conf
+  notify: reload nginx
+
+- name: Включить vhost GLPI
+  file:
+    src: /etc/nginx/sites-available/glpi.conf
+    dest: /etc/nginx/sites-enabled/glpi.conf
+    state: link
+  notify: reload nginx
+
+- name: Убрать дефолтный vhost
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: php-fpm pool для GLPI (opcache, memory_limit 512M)
+  template:
+    src: glpi-php-fpm.conf.j2
+    dest: /etc/php/8.2/fpm/pool.d/glpi.conf
+  notify: restart php-fpm
+  ignore_errors: true  # путь зависит от версии php в образе; проверить на первом прогоне
+
+# --- Плейсхолдеры интеграций ---
+# LDAP к ALD Pro (домен будет поднят позже, docs/09):
+#   Setup → Authentication → LDAP directories:
+#     server: ald.corp.crmfactory.local, port 636 (LDAPS),
+#     baseDN: dc=corp,dc=crmfactory,dc=local,
+#     bind: uid=glpi-bind,cn=users,cn=accounts,...
+#   Не автоматизируем — ALD Pro ещё не развёрнут; параметры подставить из docs/08 после его поднятия.
+#
+# Раскатка GLPI-agent на рабочие места:
+#   Linux — роль linux_desktop (glpi-agent ставится оттуда, сервер = glpi_agent_server из group_vars/all).
+#   Windows — MSI через GPO ALD Pro на этапе 5 rollout (docs/05-workplaces.md).
+
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: restart php-fpm
+      service:
+        name: php8.2-fpm
+        state: restarted

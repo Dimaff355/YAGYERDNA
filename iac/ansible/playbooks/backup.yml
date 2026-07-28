@@ -1,0 +1,11 @@
+---
+# Backup-сервер: PBS + ZFS RAIDZ2 + datastore + вторая копия в S3 (docs/04, docs/16 шаг PBS).
+# Запуск: ansible-playbook playbooks/backup.yml -u root -k
+# ВНИМАНИЕ: роль pbs создаёт zpool из pbs_zfs_devices — проверь список дисков
+# в group_vars/backup_servers.yml ПО /dev/disk/by-id перед запуском!
+
+- name: Proxmox Backup Server
+  hosts: backup_servers
+  roles:
+    - common
+    - pbs

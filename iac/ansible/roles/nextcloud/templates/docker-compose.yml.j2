@@ -1,0 +1,51 @@
+services:
+  app:
+    image: nextcloud:stable-apache
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NC_DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${NC_REDIS_PASSWORD}
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: {{ nextcloud_trusted_domains.values() | join(' ') }}
+      OVERWRITEPROTOCOL: https
+    volumes:
+      - /srv/nextcloud/data:/var/www/html
+    ports:
+      - "80:80"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NC_DB_PASSWORD}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${NC_REDIS_PASSWORD}
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT}
+    volumes:
+      - /srv/nextcloud/onlyoffice/data:/var/www/onlyoffice/Data
+    ports:
+      - "8081:80"
+
+volumes:
+  dbdata:

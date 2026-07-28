@@ -1,0 +1,5 @@
+---
+# Версии GLPI (проверить актуальность при проливе)
+glpi_version: '10.0.15'
+glpi_fqdn: "glpi.{{ domain }}"
+glpi_db_password: "{{ lookup('env', 'GLPI_DB_PASSWORD') | default('changeme') }}"

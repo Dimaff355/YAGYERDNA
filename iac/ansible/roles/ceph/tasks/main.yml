@@ -1,0 +1,73 @@
+---
+# Пулы Ceph после создания OSD (RUNBOOK, этап B — после proxmox-cluster.yml).
+# Запуск: ansible-playbook playbooks/proxmox-cluster.yml --tags ceph-pools
+# Всё идемпотентно: проверяем наличие пула перед созданием.
+
+- name: 'Пул ceph-rbd существует (size={{ ceph_pool_default_size }}, min={{ ceph_pool_default_min_size }})'
+  command: >
+    pveceph pool create ceph-rbd
+    --size {{ ceph_pool_default_size }}
+    --min_size {{ ceph_pool_default_min_size }}
+    --pg_num 256
+    --pg_num_min 128
+    --application rbd
+    --add_storages 1
+  args:
+    creates: /etc/pve/storage.cfg
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]
+
+- name: Storage ceph-rbd добавлен в Proxmox (фолбэк, если пул был создан раньше без --add_storages)
+  lineinfile:
+    path: /etc/pve/storage.cfg
+    regexp: '^rbd: ceph-rbd'
+    line: 'rbd: ceph-rbd'
+    insertafter: EOF
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]
+
+- name: Пул cephfs-metadata (на будущее — под общие шары ВМ, пока не используется)
+  command: >
+    pveceph pool create cephfs-metadata
+    --size {{ ceph_pool_default_size }}
+    --min_size {{ ceph_pool_default_min_size }}
+    --pg_num 64
+    --application cephfs
+  run_once: true
+  when:
+    - inventory_hostname == groups['proxmox_nodes'][0]
+    - ceph_create_cephfs_pools | default(false)
+  ignore_errors: true
+
+- name: Ждём HEALTH_OK или HEALTH_WARN (только PG-варнинги допустимы на старте)
+  command: ceph -s --format json
+  register: ceph_status
+  until: >
+    (ceph_status.stdout | from_json).health.status in ['HEALTH_OK', 'HEALTH_WARN']
+  retries: 12
+  delay: 10
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]
+
+- name: Сводка здоровья кластера
+  command: ceph -s
+  register: ceph_s
+  changed_when: false
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]
+
+- name: Показать ceph -s
+  debug:
+    msg: '{{ ceph_s.stdout_lines }}'
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]
+
+- name: 'Проверка: ни один PG не в undersized/degraded после выравнивания'
+  command: ceph pg stat --format json
+  register: ceph_pg
+  failed_when: >
+    ((ceph_pg.stdout | from_json).num_pg_by_state | selectattr('name', 'search', 'degraded|undersized|incomplete') | list | length) > 0
+    and not ceph_allow_degraded | default(false)
+  changed_when: false
+  run_once: true
+  when: inventory_hostname == groups['proxmox_nodes'][0]

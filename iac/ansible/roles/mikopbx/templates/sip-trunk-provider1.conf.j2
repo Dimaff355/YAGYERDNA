@@ -1,0 +1,18 @@
+; SIP-транк №1 — ОСНОВНОЙ провайдер (плейсхолдер, заменить реквизитами из договора)
+; Приоритет в маршрутизации исходящих: первый
+[provider1]
+type=friend
+host=sip1.provider-one.example.ru        ; ← endpoint провайдера №1
+username=PROVIDER1_LOGIN                 ; ← из договора (OpenBao)
+secret=PROVIDER1_PASSWORD                ; ← из OpenBao
+fromuser=PROVIDER1_LOGIN
+fromdomain=sip1.provider-one.example.ru
+context=from-trunk
+insecure=port,invite
+qualify=yes
+qualifyfreq=30
+nat=force_rport,comedia
+disallow=all
+allow=alaw
+allow=ulaw
+dtmfmode=rfc2833
