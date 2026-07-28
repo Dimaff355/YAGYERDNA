@@ -1,0 +1,17 @@
+---
+# Кластер Proxmox: имя, сеть кластера, Ceph
+cluster_name: crm-infra
+cluster_network: 10.10.20.0/24      # corosync
+ceph_public_network: 10.10.25.0/24  # 25G-фабрика Ceph
+ceph_cluster_network: 10.10.26.0/24
+ceph_osd_devices:
+  - /dev/nvme1n1
+  - /dev/nvme2n1
+  - /dev/nvme3n1
+  - /dev/nvme4n1
+  - /dev/nvme5n1
+  - /dev/nvme6n1
+ceph_pool_default_size: 3
+ceph_pool_default_min_size: 2
+
+pve_no_subscription_repo: true  # или enterprise-repo при подписке Community/Premium

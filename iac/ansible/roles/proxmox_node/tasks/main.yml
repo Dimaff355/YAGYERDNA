@@ -1,0 +1,43 @@
+---
+- name: Репозиторий Proxmox (no-subscription для PoC; enterprise при подписке)
+  apt_repository:
+    repo: "deb http://download.proxmox.com/debian/pve {{ ansible_distribution_release }} pve-no-subscription"
+    state: "{{ 'present' if pve_no_subscription_repo else 'absent' }}"
+    filename: pve-no-subscription
+
+- name: Отключить enterprise-репозиторий без подписки
+  apt_repository:
+    repo: "deb https://enterprise.proxmox.com/debian/pve {{ ansible_distribution_release }} pve-enterprise"
+    state: absent
+    filename: pve-enterprise
+  when: pve_no_subscription_repo
+
+- name: Пакеты ноды
+  apt:
+    name:
+      - ceph-common
+      - ifupdown2
+      - nvme-cli
+      - smartmontools
+    state: present
+    update_cache: true
+
+- name: Сетевые мосты кластера (vmbr0 — прод, vmbr1 — Ceph 25G)
+  template:
+    src: interfaces.j2
+    dest: /etc/network/interfaces
+    validate: "ifup --no-act --interfaces=%s -a"
+  notify: reload networking
+
+- name: IOMMU для SR-IOV/проброса (опционально)
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"'
+  notify: update grub
+
+  handlers:
+    - name: reload networking
+      command: ifreload -a
+    - name: update grub
+      command: update-grub

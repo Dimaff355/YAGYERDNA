@@ -1,0 +1,43 @@
+---
+# Пост-установка Linux-рабочих станций (docs/05-workplaces.md)
+# Запуск: ansible-pull -U https://git.corp.crmfactory.local/iac/ansible.git playbooks/site.yml
+- name: Р7-Офис (пакет из локального репозитория)
+  apt:
+    deb: "{{ r7office_deb_url }}"
+    state: present
+  tags: software
+
+- name: Яндекс.Браузер (корпоративная сборка из зеркала)
+  apt:
+    deb: "{{ yabrowser_deb_url }}"
+    state: present
+  tags: software
+
+- name: Софтфон MicroSIP (для колл-центра)
+  apt:
+    name: twinkle
+    state: present
+  when: workstation_role == 'callcenter'
+  tags: software
+
+- name: GLPI-агент (инвентаризация)
+  apt:
+    name: glpi-agent
+    state: present
+
+- name: GLPI-агент указывает на сервер
+  lineinfile:
+    path: /etc/glpi-agent/agent.cfg
+    regexp: '^server ='
+    line: "server = {{ glpi_agent_server }}"
+  notify: restart glpi-agent
+
+- name: Режим киоска для колл-центра (autologin + браузер во весь экран)
+  template:
+    src: kiosk-autostart.j2
+    dest: /etc/xdg/autostart/kiosk.desktop
+  when: workstation_role == 'callcenter'
+
+  handlers:
+    - name: restart glpi-agent
+      service: { name: glpi-agent, state: restarted, enabled: true }

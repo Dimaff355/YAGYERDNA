@@ -1,0 +1,37 @@
+---
+- name: Сборка кластера Proxmox и Ceph
+  hosts: proxmox_nodes
+  become: true
+  roles:
+    - proxmox_node
+
+  tasks:
+    - name: Кластер создан (только на первой ноде)
+      command: "pvecm create {{ cluster_name }} --link0 {{ ansible_host }}"
+      args:
+        creates: /etc/pve/corosync.conf
+      run_once: true
+
+    - name: Остальные ноды вступают в кластер
+      command: "pvecm add {{ hostvars[groups['proxmox_nodes'][0]].ansible_host }} --link0 {{ ansible_host }}"
+      when: inventory_hostname != groups['proxmox_nodes'][0]
+      args:
+        creates: /etc/pve/corosync.conf
+
+    - name: Ceph установлен на всех нодах
+      command: pveceph install --repository no-subscription
+      args:
+        creates: /usr/bin/ceph
+
+    - name: Ceph mon+mgr на первых трёх нодах
+      command: pveceph mon create
+      when: inventory_hostname in groups['proxmox_nodes'][:3]
+      args:
+        creates: /etc/ceph/ceph.conf
+
+    - name: OSD на каждом NVMe
+      command: "pveceph osd create {{ item }}"
+      loop: "{{ ceph_osd_devices }}"
+      args:
+        creates: /var/lib/ceph/osd
+      tags: ceph

@@ -1,0 +1,27 @@
+---
+# Полная сборка инфраструктуры (docs/11-rollout.md, этапы 3–4)
+- name: Базовая настройка всех хостов
+  hosts: all
+  roles:
+    - common
+
+- name: Кластер Proxmox + Ceph
+  hosts: proxmox_nodes
+  roles:
+    - proxmox_node
+    # - ceph   # раскомментировать после пролива нод и проверки дисков
+
+- name: Инфраструктурные сервисы
+  hosts: infra_vms
+  roles:
+    - zabbix_server
+    # - glpi
+    # - nextcloud
+    # - keycloak
+    # - pbs на backup_servers (отдельный playbook: backup.yml)
+
+- name: Рабочие места Linux (через ansible-pull, справочно)
+  hosts: linux_desktops
+  gather_facts: false
+  roles:
+    - linux_desktop

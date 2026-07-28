@@ -1,0 +1,34 @@
+---
+- name: Zabbix server + frontend (PostgreSQL)
+  apt:
+    name:
+      - zabbix-server-pgsql
+      - zabbix-frontend-php
+      - zabbix-apache-conf
+      - zabbix-sql-scripts
+      - postgresql
+    state: present
+    update_cache: true
+
+- name: БД Zabbix
+  postgresql_db:
+    name: zabbix
+    state: present
+  become_user: postgres
+
+- name: Импорт схемы
+  command: >
+    zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz
+    | psql -U zabbix -d zabbix
+  args:
+    creates: /var/lib/zabbix/.schema_imported
+
+- name: Конфиг сервера
+  template:
+    src: zabbix_server.conf.j2
+    dest: /etc/zabbix/zabbix_server.conf
+  notify: restart zabbix-server
+
+  handlers:
+    - name: restart zabbix-server
+      service: { name: zabbix-server, state: restarted, enabled: true }

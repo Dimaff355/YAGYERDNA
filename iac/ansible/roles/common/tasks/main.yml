@@ -1,0 +1,57 @@
+---
+- name: Базовая настройка всех хостов (ВМ и железо)
+  hosts: all
+  become: true
+  tasks:
+    - name: Часовой пояс
+      timezone:
+        name: "{{ timezone }}"
+
+    - name: NTP-хрони
+      apt:
+        name: chrony
+        state: present
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Серверы NTP
+      lineinfile:
+        path: /etc/chrony/chrony.conf
+        regexp: '^pool '
+        line: "pool {{ item }} iburst"
+      loop: "{{ ntp_servers }}"
+      notify: restart chrony
+
+    - name: Базовые пакеты
+      apt:
+        name:
+          - curl
+          - vim
+          - htop
+          - net-tools
+          - snmpd
+          - zabbix-agent
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Zabbix-агент указывает на сервер
+      lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^Server='
+        line: "Server={{ zabbix_server_host }}"
+      notify: restart zabbix-agent
+
+    - name: "SSH: запрет root по паролю"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+      notify: restart sshd
+
+  handlers:
+    - name: restart chrony
+      service: { name: chrony, state: restarted }
+    - name: restart zabbix-agent
+      service: { name: zabbix-agent, state: restarted }
+    - name: restart sshd
+      service: { name: sshd, state: restarted }

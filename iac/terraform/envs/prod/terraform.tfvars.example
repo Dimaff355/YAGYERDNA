@@ -1,0 +1,3 @@
+proxmox_endpoint = "https://pve-01.corp.crmfactory.local:8006/"
+# proxmox_api_token — ТОЛЬКО через env: TF_VAR_proxmox_api_token
+ssh_public_key   = "ssh-ed25519 AAAA... sysadmin@crmfactory"
